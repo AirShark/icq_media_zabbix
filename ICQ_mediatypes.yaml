@@ -1,0 +1,153 @@
+zabbix_export:
+  version: '6.4'
+  media_types:
+    - name: 'ICQ\ARM GS'
+      type: WEBHOOK
+      parameters:
+        - name: Message
+          value: '{ALERT.MESSAGE}'
+        - name: ParseMode
+          value: HTML
+        - name: Subject
+          value: '<b>{ALERT.SUBJECT}</b>'
+        - name: To
+          value: '{ALERT.SENDTO}'
+        - name: Token
+          value: '<TOKEN>'
+      script: |
+        var ICQ = {
+            token: null,
+            to: null,
+            message: null,
+            parse_mode: null,
+        
+            sendMessage: function () {
+                var params = {
+                    chatId: ICQ.to,
+                    text: ICQ.message
+                },
+                response,
+                request = new HttpRequest(),
+                
+                // Для активации нужного сервера API уберите // слешы.
+                // Не забудьте поставить такие же слешы на тех серверах которые вам не нужны
+                // API ARG GS
+                //url = 'https://api.armgs.team/bot/v1/messages/sendText?token=' + ICQ.token + '&chatId=' + ICQ.to + '&text=' + ICQ.message + '&parseMode=' + ICQ.parse_mode;
+                
+                // Server API ICQ
+                url = 'https://api.icq.net/bot/v1/messages/sendText?token=' + ICQ.token + '&chatId=' + ICQ.to + '&text=' + ICQ.message + '&parseMode=' + ICQ.parse_mode;
+                
+                // Server API Mail.ru
+                //url = 'https://agent.mail.ru/bot/v1/messages/sendText?token=' + ICQ.token + '&chatId=' + ICQ.to + '&text=' + ICQ.message + '&parseMode=' + ICQ.parse_mode;
+        
+                request.addHeader('Content-Type: application/json');
+        
+                // Remove replace() function if you want to see the exposed token in the log file.
+                Zabbix.log(4, '[ICQ Webhook] URL: ' + url);
+                response = request.post(encodeURI(url));
+                Zabbix.log(4, '[ICQ Webhook] HTTP code: ' + response);
+        
+                try {
+                    response = JSON.parse(response);
+                }
+                catch (error) {
+                    response = null;
+                }
+        
+                if (request.getStatus() !== 200 || typeof response.ok !== 'boolean' || response.ok !== true) {
+                    if (typeof response.description === 'string') {
+                        throw response.description;
+                    }
+                    else {
+                        throw 'Unknown error. Check debug log for more information.';
+                    }
+                }
+            }
+        };
+        
+        try {
+            var params = JSON.parse(value);
+        
+            if (typeof params.Token === 'undefined') {
+                throw 'Incorrect value is given for parameter "Token": parameter is missing';
+            }
+        
+            ICQ.token = params.Token;
+        	
+            ICQ.parse_mode = params.ParseMode;
+        
+            ICQ.to = params.To;
+            ICQ.message = params.Subject + '\n' + params.Message;
+        	
+            ICQ.sendMessage();
+        
+            return 'OK';
+        }
+        catch (error) {
+            Zabbix.log(4, '[ICQ Webhook] notification failed: ' + error);
+            throw 'Sending failed: ' + error + '.';
+        }
+      timeout: 10s
+      description: |
+        По умолчанию используется сервер ICQ
+        
+        Подходит для получения оповещений на клиенты от ICQ, Mail Agent и АРМ ГС.
+        Вставьте в поле Token уникальный идентификатор от бота созданного в одном из клиентов описанных выше.
+        
+        В полях Message и Subject можно использовать HTML разметку.
+        Подробнее: https://agent.mail.ru/botapi/tutorial/?lang=ru#Format_HTML
+        
+        Для активации нужного сервера API уберите // слешы. В поле Script
+        Не забудьте поставить такие же // слешы на тех серверах которые вам не нужны или можете просто удалить строки
+      message_templates:
+        - event_source: TRIGGERS
+          operation_mode: PROBLEM
+          subject: 'Problem: {EVENT.NAME}'
+          message: |
+            Problem started at {EVENT.TIME} on {EVENT.DATE}
+            Problem name: {EVENT.NAME}
+            Host: {HOST.NAME}
+            Severity: {EVENT.SEVERITY}
+            Operational data: {EVENT.OPDATA}
+            Original problem ID: {EVENT.ID}
+            {TRIGGER.URL}
+        - event_source: TRIGGERS
+          operation_mode: RECOVERY
+          subject: 'Resolved in {EVENT.DURATION}: {EVENT.NAME}'
+          message: |
+            Problem has been resolved in {EVENT.DURATION} at {EVENT.RECOVERY.TIME} on {EVENT.RECOVERY.DATE}
+            Problem name: {EVENT.NAME}
+            Host: {HOST.NAME}
+            Severity: {EVENT.SEVERITY}
+            Original problem ID: {EVENT.ID}
+            {TRIGGER.URL}
+        - event_source: TRIGGERS
+          operation_mode: UPDATE
+          subject: 'Updated problem: {EVENT.NAME}'
+          message: |
+            {USER.FULLNAME} {EVENT.UPDATE.ACTION} problem at {EVENT.UPDATE.DATE} {EVENT.UPDATE.TIME}.
+            {EVENT.UPDATE.MESSAGE}
+            
+            Current problem status is {EVENT.STATUS}, acknowledged: {EVENT.ACK.STATUS}.
+        - event_source: DISCOVERY
+          operation_mode: PROBLEM
+          subject: 'Discovery: {DISCOVERY.DEVICE.STATUS} {DISCOVERY.DEVICE.IPADDRESS}'
+          message: |
+            Discovery rule: {DISCOVERY.RULE.NAME}
+            
+            Device IP: {DISCOVERY.DEVICE.IPADDRESS}
+            Device DNS: {DISCOVERY.DEVICE.DNS}
+            Device status: {DISCOVERY.DEVICE.STATUS}
+            Device uptime: {DISCOVERY.DEVICE.UPTIME}
+            
+            Device service name: {DISCOVERY.SERVICE.NAME}
+            Device service port: {DISCOVERY.SERVICE.PORT}
+            Device service status: {DISCOVERY.SERVICE.STATUS}
+            Device service uptime: {DISCOVERY.SERVICE.UPTIME}
+        - event_source: AUTOREGISTRATION
+          operation_mode: PROBLEM
+          subject: 'Autoregistration: {HOST.HOST}'
+          message: |
+            Host name: {HOST.HOST}
+            Host IP: {HOST.IP}
+            Agent port: {HOST.PORT}
